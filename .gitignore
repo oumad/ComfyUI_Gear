@@ -25,3 +25,6 @@ Thumbs.db
 
 # Vendored exr-viewer source maps (built artifacts kept; maps are bulky)
 web/vendor/**/*.map
+
+# `comfy node publish` leftover
+node.zip
