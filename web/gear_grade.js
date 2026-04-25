@@ -18,8 +18,12 @@
 import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
 
-const EXT_BASE = "/extensions/ComfyUI_Gear";
-const IFRAME_SRC = `${EXT_BASE}/vendor/exr-viewer/index.html?embed=1`;
+// Resolve our own served directory from the JS file's URL — works
+// regardless of whether ComfyUI installed us as `ComfyUI_Gear` (manual /
+// Manager) or `comfyui-gear` (Registry / comfy-cli), and regardless of
+// any rename the user did.
+const EXT_BASE = new URL(".", import.meta.url).href;        // .../extensions/<dir>/
+const IFRAME_SRC = new URL("vendor/exr-viewer/index.html?embed=1", EXT_BASE).href;
 
 // ── Widget <-> RenderParams mapping ─────────────────────────────────────
 const TONE_MAPS = ["None", "Reinhard", "ACES Fitted", "AgX", "Hable"];

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "comfyui-gear"
-version = "0.1.0"
+version = "0.1.1"
 description = "VFX-oriented nodes for ComfyUI: HDR LogC3 decode, EXR I/O, and an interactive ACEScct color grading panel powered by exr-viewer."
 readme = "README.md"
 license = { file = "LICENSE" }
