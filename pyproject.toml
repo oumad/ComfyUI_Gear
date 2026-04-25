@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "comfyui-gear"
+version = "0.1.0"
+description = "VFX-oriented nodes for ComfyUI: HDR LogC3 decode, EXR I/O, and an interactive ACEScct color grading panel powered by exr-viewer."
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+authors = [
+  { name = "Mohamed Oumoumad", email = "m.oumoumad@gear-productions.com" }
+]
+keywords = ["comfyui", "comfy", "hdr", "exr", "vfx", "color-grading", "logc3", "aces"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: End Users/Desktop",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Topic :: Multimedia :: Graphics",
+  "Topic :: Multimedia :: Video",
+]
+dependencies = [
+  "opencv-python>=4.8",
+  "numpy",
+  "Pillow",
+]
+
+[project.urls]
+# Replace with your actual GitHub URLs once published.
+Homepage   = "https://github.com/oumad/ComfyUI_Gear"
+Repository = "https://github.com/oumad/ComfyUI_Gear"
+Issues     = "https://github.com/oumad/ComfyUI_Gear/issues"
+
+# ── ComfyUI Registry metadata (used by ComfyUI Manager and the Registry).
+# Set PublisherId once you've registered at https://registry.comfy.org.
+[tool.comfy]
+PublisherId   = ""
+DisplayName   = "ComfyUI_Gear"
+Icon          = ""
+
+[tool.setuptools]
+packages = ["gear", "nodes"]

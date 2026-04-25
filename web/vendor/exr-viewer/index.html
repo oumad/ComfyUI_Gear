@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>HDR EXR Viewer</title>
+  <script type="module" crossorigin src="./assets/index-DRgU-uTL.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-iigXSoGH.css">
+</head>
+<body>
+
+<!-- ── Top toolbar (Nuke-style) ───────────────────────── -->
+<div class="toolbar">
+  <div class="clip-picker" id="clip-picker">
+    <button class="clip-trigger" id="clip-trigger">
+      <img class="clip-trigger-thumb" id="clip-trigger-thumb" alt=""/>
+      <span class="clip-trigger-name" id="clip-trigger-name"></span>
+      <span class="clip-trigger-arrow">&#9662;</span>
+    </button>
+    <div class="clip-popup" id="clip-popup">
+      <div class="clip-grid" id="clip-grid"></div>
+    </div>
+  </div>
+
+  <div class="tb-sep"></div>
+
+  <label class="tb-label">EV</label>
+  <input type="range" id="sl-exposure" class="tb-slider" min="-6" max="6" step="0.05" value="0"/>
+  <input type="number" class="tb-num" id="tb-ev" value="0.00" step="0.05" min="-6" max="6"/>
+  <button class="tb-reset-dot" id="ev-reset" title="Reset EV">&#x21ba;</button>
+
+  <div class="tb-sep" style="margin:0 4px"></div>
+
+  <select id="tm-select" title="Tone Map" class="tb-select-sm">
+    <option value="0">None</option>
+    <option value="1">Reinhard</option>
+    <option value="2" selected>ACES</option>
+    <option value="3">AgX</option>
+    <option value="4">Hable</option>
+  </select>
+
+  <div class="tb-sep" style="margin:0 4px"></div>
+
+  <button class="tb-btn tb-btn-label" id="btn-lut" title="Load .cube LUT">LUT</button>
+  <span class="tb-lut-name" id="lut-name"></span>
+  <input type="file" id="lut-file" accept=".cube" style="display:none"/>
+
+  <div class="tb-spacer"></div>
+
+  <button class="tb-btn" id="btn-compare" title="Compare HDR / SDR (C)">A|B</button>
+
+  <span class="tb-info" id="info-res"></span>
+  <span class="tb-info" id="info-decode"></span>
+
+  <button class="tb-btn" id="btn-panel" title="Toggle panel (Tab)">&#9776;</button>
+</div>
+
+<!-- ── Main area ──────────────────────────────────────── -->
+<div class="main">
+
+  <!-- Viewer column (viewport + timeline + status) -->
+  <div class="viewer-col">
+    <div class="viewport">
+      <canvas id="canvas"></canvas>
+      <canvas id="sdr-canvas" class="sdr-overlay"></canvas>
+      <div class="wipe-line" id="wipe-line"></div>
+      <div class="wipe-label-l" id="wipe-label-l">SDR</div>
+      <div class="wipe-label-r" id="wipe-label-r">HDR</div>
+      <div class="loading">Initializing WASM&hellip;</div>
+      <div class="probe" id="probe"><div class="probe-cross"></div><div class="probe-label"></div></div>
+      <span class="probe-hint">Ctrl+click to probe</span>
+      <div class="fc-legend">
+        <div class="fc-row"><span class="fc-chip" style="background:#000040"></span>&lt; 0.0</div>
+        <div class="fc-row"><span class="fc-chip" style="background:#0000ff"></span>0 &ndash; 0.01</div>
+        <div class="fc-row"><span class="fc-chip" style="background:#00b3ff"></span>0.01 &ndash; 0.09</div>
+        <div class="fc-row"><span class="fc-chip" style="background:#008000"></span>0.09 &ndash; 0.18</div>
+        <div class="fc-row"><span class="fc-chip" style="background:#00ff00"></span>0.18 &ndash; 0.5</div>
+        <div class="fc-row"><span class="fc-chip" style="background:#ffff00"></span>0.5 &ndash; 1.0 (SDR)</div>
+        <div class="fc-row"><span class="fc-chip" style="background:#ff8000"></span>1.0 &ndash; 2.0</div>
+        <div class="fc-row"><span class="fc-chip" style="background:#ff0000"></span>2.0 &ndash; 8.0</div>
+        <div class="fc-row"><span class="fc-chip" style="background:#ff00ff"></span>&gt; 8.0</div>
+      </div>
+    </div>
+    <!-- Timeline -->
+    <div class="timeline">
+      <span class="tl-frame" id="tl-start">0</span>
+      <input type="range" id="frame-slider" class="tl-scrubber" min="0" max="120" step="1" value="60"/>
+      <span class="tl-frame" id="tl-end">120</span>
+      <div class="tl-sep"></div>
+      <span class="tl-current" id="frame-num">60</span>
+    </div>
+    <!-- Status bar -->
+    <div class="bottombar">
+      <span id="px-coord"></span>
+      <span id="px-swatch" class="swatch"></span>
+      <span id="px-rgb"></span>
+      <span id="px-lum"></span>
+    </div>
+  </div>
+
+  <!-- Side panel (toggleable) -->
+  <div class="panel-wrap" id="panel-wrap">
+    <div class="panel-resize" id="panel-resize"></div>
+    <div class="panel">
+
+      <!-- Scopes -->
+      <div class="scope-wrap">
+        <div class="scope-tabs">
+          <button class="scope-tab active" data-mode="histogram">Histogram</button>
+          <button class="scope-tab" data-mode="parade">Parade</button>
+        </div>
+        <canvas id="scope-canvas" width="350" height="80"></canvas>
+      </div>
+
+      <!-- Tone -->
+      <details open>
+        <summary>Tone</summary>
+        <div class="section-body">
+          <div class="slider-row">
+            <div class="label-row"><label>Contrast</label><span class="val">1.00</span></div>
+            <input type="range" id="sl-contrast" min="0.25" max="3" step="0.01" value="1"/>
+          </div>
+          <div class="slider-row">
+            <div class="label-row"><label>Pivot</label><span class="val">0.18</span></div>
+            <input type="range" id="sl-pivot" min="0.01" max="1" step="0.01" value="0.18"/>
+          </div>
+          <div class="slider-row">
+            <div class="label-row"><label>Shadows</label><span class="val">0.00</span></div>
+            <input type="range" id="sl-shadows" min="-1" max="1" step="0.01" value="0"/>
+          </div>
+          <div class="slider-row">
+            <div class="label-row"><label>Highlights</label><span class="val">0.00</span></div>
+            <input type="range" id="sl-highlights" min="-1" max="1" step="0.01" value="0"/>
+          </div>
+          <div class="slider-row">
+            <div class="label-row"><label>Soft Clip</label><span class="val">0.00</span></div>
+            <input type="range" id="sl-softclip" min="0" max="1" step="0.01" value="0"/>
+          </div>
+        </div>
+      </details>
+
+      <!-- Color -->
+      <details open>
+        <summary>Color</summary>
+        <div class="section-body">
+          <div class="slider-row">
+            <div class="label-row"><label>Temperature</label><span class="val">0.00</span></div>
+            <input type="range" id="sl-temperature" min="-1" max="1" step="0.01" value="0"/>
+          </div>
+          <div class="slider-row">
+            <div class="label-row"><label>Tint</label><span class="val">0.00</span></div>
+            <input type="range" id="sl-tint" min="-1" max="1" step="0.01" value="0"/>
+          </div>
+          <div class="slider-row">
+            <div class="label-row"><label>Saturation</label><span class="val">1.00</span></div>
+            <input type="range" id="sl-saturation" min="0" max="3" step="0.01" value="1"/>
+          </div>
+          <div class="slider-row">
+            <div class="label-row"><label>Vibrance</label><span class="val">0.00</span></div>
+            <input type="range" id="sl-vibrance" min="-1" max="1" step="0.01" value="0"/>
+          </div>
+          <div class="slider-row">
+            <div class="label-row"><label>Hue Shift</label><span class="val">0&deg;</span></div>
+            <input type="range" id="sl-hueshift" min="-180" max="180" step="1" value="0"/>
+          </div>
+        </div>
+      </details>
+
+      <!-- Color Grading (wheels) -->
+      <details open>
+        <summary>Color Grading</summary>
+        <div class="section-body">
+          <div id="wheels-container" class="wheels-grid"></div>
+        </div>
+      </details>
+
+      <!-- Diagnostics -->
+      <details>
+        <summary>Diagnostics</summary>
+        <div class="section-body">
+          <label class="check-row"><input type="checkbox" id="fc-check"/>False Color</label>
+        </div>
+      </details>
+
+      <button class="btn" id="btn-reset">Reset All</button>
+    </div>
+  </div>
+</div>
+
+
+</body>
+</html>

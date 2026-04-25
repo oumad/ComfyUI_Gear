@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# IDE / editors
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Local-only files
+*.local.json
+*.local.yaml
+.env
+.env.local
+
+# Vendored exr-viewer source maps (built artifacts kept; maps are bulky)
+web/vendor/**/*.map
