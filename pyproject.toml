@@ -36,7 +36,7 @@ Issues     = "https://github.com/oumad/ComfyUI_Gear/issues"
 # ── ComfyUI Registry metadata (used by ComfyUI Manager and the Registry).
 # Set PublisherId once you've registered at https://registry.comfy.org.
 [tool.comfy]
-PublisherId   = ""
+PublisherId   = "oumoumad"
 DisplayName   = "ComfyUI_Gear"
 Icon          = ""
 
