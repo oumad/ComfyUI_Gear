@@ -11,7 +11,7 @@ extension story (one node per file in `nodes/`, library code in `gear/`).
 """
 from .nodes import NODE_CLASS_MAPPINGS, NODE_DISPLAY_NAME_MAPPINGS
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 WEB_DIRECTORY = "./web"
 
 __all__ = [
