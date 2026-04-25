@@ -49,8 +49,6 @@ uniform vec4  uSDRCrop;
 uniform highp sampler3D uLUT3D;
 uniform bool  uLUTEnabled;
 uniform float uLUTSize;      // e.g. 33.0
-uniform float uZoom;         // 1 = fit, >1 = zoom in
-uniform vec2  uPan;          // image-UV offset (positive pans content right/down)
 
 in  vec2 vUv;
 out vec4 oColor;
@@ -257,29 +255,23 @@ vec3 dither(vec2 fc){
 //  MAIN
 // ═════════════════════════════════════════════════════════
 void main(){
-  // Wipe line is in screen UV space — stays fixed regardless of zoom/pan.
+  // Wipe line (drawn before anything else)
   if(uCompareOn && abs(vUv.x - uWipePos) < 0.002){
     oColor = vec4(vec3(0.9), 1.0);
     return;
   }
 
-  // Map screen UV → image UV through zoom/pan (zoom=1, pan=0 is identity).
-  vec2 imgUv = (vUv - vec2(0.5)) / uZoom + vec2(0.5) + uPan;
-
-  // Outside the image after zoom/pan: neutral background.
-  if(any(lessThan(imgUv, vec2(0.0))) || any(greaterThan(imgUv, vec2(1.0)))){
-    oColor = vec4(0.05, 0.05, 0.05, 1.0);
-    return;
-  }
-
-  // Select source: SDR (left of wipe) or HDR (right). Both sample at imgUv
-  // so zoom/pan stay aligned across the wipe.
+  // Select source: SDR (left of wipe) or HDR (right).
+  // Zoom/pan are applied at the DOM layer (CSS transform on the canvas)
+  // so the shader stays simple and the image overflows the viewport at
+  // zoom > 1 instead of being constrained to its original footprint.
   vec3 c;
   if(uCompareOn && vUv.x < uWipePos){
-    vec2 sdrUv = imgUv * uSDRCrop.xy + uSDRCrop.zw;
+    // Remap UVs to sample the center crop of the larger SDR texture
+    vec2 sdrUv = vUv * uSDRCrop.xy + uSDRCrop.zw;
     c = sRGBToLinear(texture(uTexSDR, sdrUv).rgb);
   } else {
-    c = texture(uTex, imgUv).rgb;
+    c = texture(uTex, vUv).rgb;
   }
 
   // 1. Exposure
@@ -392,7 +384,6 @@ const U_NAMES = [
     'uSaturation', 'uVibrance', 'uHueShift', 'uFalseColor',
     'uCompareOn', 'uWipePos', 'uSDRCrop',
     'uLUT3D', 'uLUTEnabled', 'uLUTSize',
-    'uZoom', 'uPan',
 ];
 const HIST_W = 320, HIST_H = 180;
 export class HDRRenderer {
@@ -404,8 +395,6 @@ export class HDRRenderer {
         this.wipePos = 0.5;
         this.sdrCrop = [1, 1, 0, 0];
         this.lutEnabled = false;
-        this.zoom = 1.0;
-        this.pan = [0, 0];
         this.lutSize = 33; // scaleX, scaleY, offsetX, offsetY
         const gl = canvas.getContext('webgl2', { antialias: false, premultipliedAlpha: false });
         if (!gl)
@@ -459,7 +448,6 @@ export class HDRRenderer {
     uploadImage(rgb, w, h) {
         this.imageWidth = w;
         this.imageHeight = h;
-        this.resetView(); // a new image starts fit-to-viewport
         const px = w * h;
         const rgba = new Float32Array(px * 4);
         for (let i = 0; i < px; i++) {
@@ -540,29 +528,7 @@ export class HDRRenderer {
         gl.uniform1f(this.u.uVibrance, p.vibrance);
         gl.uniform1f(this.u.uHueShift, p.hueShift);
         gl.uniform1i(this.u.uFalseColor, p.falseColor ? 1 : 0);
-        gl.uniform1f(this.u.uZoom, this.zoom);
-        gl.uniform2f(this.u.uPan, this.pan[0], this.pan[1]);
         gl.bindVertexArray(this.vao);
-    }
-    /** Reset zoom/pan to fit (zoom=1, pan=0). Call when a new image loads. */
-    resetView() {
-        this.zoom = 1.0;
-        this.pan = [0, 0];
-    }
-    /**
-     * Convert a pointer's client coords (within the canvas's bounding rect)
-     * to integer image-pixel coords, applying the inverse view transform.
-     * Returns null if the cursor is outside the image bounds at the current
-     * zoom/pan.
-     */
-    canvasToImagePixel(rect, clientX, clientY) {
-        const sx = (clientX - rect.left) / rect.width;
-        const sy = (clientY - rect.top) / rect.height;
-        const ux = (sx - 0.5) / this.zoom + 0.5 + this.pan[0];
-        const uy = (sy - 0.5) / this.zoom + 0.5 + this.pan[1];
-        if (ux < 0 || uy < 0 || ux > 1 || uy > 1)
-            return null;
-        return [Math.floor(ux * this.imageWidth), Math.floor(uy * this.imageHeight)];
     }
     render(p) {
         const gl = this.gl;
@@ -574,9 +540,6 @@ export class HDRRenderer {
     readHistogramPixels(p) {
         const gl = this.gl;
         this.setUniforms(p);
-        // Histogram always reflects the WHOLE image, regardless of viewer zoom/pan.
-        gl.uniform1f(this.u.uZoom, 1.0);
-        gl.uniform2f(this.u.uPan, 0, 0);
         gl.bindFramebuffer(gl.FRAMEBUFFER, this.histFBO);
         gl.viewport(0, 0, HIST_W, HIST_H);
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
