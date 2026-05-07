@@ -85,6 +85,17 @@ class GearColorGrade:
     OUTPUT_NODE = True
     CATEGORY = "Gear/HDR"
 
+    @classmethod
+    def IS_CHANGED(cls, **kwargs):
+        # The frontend grade panel needs the input EXR on disk in temp/
+        # to drive its live preview, but ComfyUI wipes temp/ on every
+        # server start. If we let this node cache, a restart leaves the
+        # panel pointing at a deleted filename (404 in /api/view).
+        # Forcing re-execution every run is cheap (small grade pipeline
+        # + one EXR write) and keeps the preview file in lock-step with
+        # whatever the panel will try to fetch.
+        return os.urandom(8).hex()
+
     def run(self, hdr_linear, exposure, tone_map, soft_clip, temperature, tint,
             lift_r, lift_g, lift_b, gamma_r, gamma_g, gamma_b,
             gain_r, gain_g, gain_b, offset_r, offset_g, offset_b,

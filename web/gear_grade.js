@@ -300,7 +300,15 @@ async function onIframeReady() {
     }
   } catch (err) {
     console.error("[Gear] source load failed", err);
-    setStatus(`Load failed: ${err.message}`);
+    if (err.status === 404) {
+      // Stale cached reference — temp/ was likely wiped (ComfyUI clears
+      // it on server start). Drop the entries so the next run repopulates.
+      lastExrsByNodeId.delete(String(currentNode.id));
+      lastSdrsByNodeId.delete(String(currentNode.id));
+      setStatus("Preview file missing on server — run the graph once to refresh.");
+    } else {
+      setStatus(`Load failed: ${err.message}`);
+    }
   }
 }
 
@@ -314,7 +322,11 @@ function viewQs(info) {
 
 async function fetchBytes(url) {
   const resp = await fetch(url);
-  if (!resp.ok) throw new Error(`HTTP ${resp.status} on ${url}`);
+  if (!resp.ok) {
+    const e = new Error(`HTTP ${resp.status} on ${url}`);
+    e.status = resp.status;
+    throw e;
+  }
   return resp.arrayBuffer();
 }
 
