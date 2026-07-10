@@ -5,6 +5,7 @@ VFX-oriented custom nodes for [ComfyUI](https://github.com/comfyanonymous/ComfyU
 Currently ships:
 - **Gear · LogC3 Decode + Save EXR** — inverse-LogC3 a `[0,1]` LoRA output to scene-linear HDR and write a float16 EXR. Ceiling ~55 linear (≈8.3 stops above mid-gray).
 - **Gear · LogC4 Decode + Save EXR** — same idea with ARRI LogC4. Ceiling ~470 linear (≈11.3 stops above mid-gray) — ~3 extra stops of highlight headroom for HDR LoRAs trained on LogC4 targets (e.g. the V10 / `*_logc4_*` family).
+- **Gear · ACEScct Decode + Save EXR** — same idea with ACEScct (AMPAS S-2016-001). Ceiling ~222.86 linear (≈10.3 stops above mid-gray) with a bounded shadow toe, so more of `[0,1]` goes to shadows/midtones than LogC4. For HDR LoRAs trained on ACEScct targets (the ACEScct Prodigy r128 family). Output is 16-bit half-float EXR, ~14-bit effective (VAE-decoded).
 - **Gear · Color Grade (exr-viewer)** — full ACEScct grading panel (color wheels, lift/gamma/gain/offset, scopes, A|B compare, batch scrubber, AgX / ACES Fitted / Hable / Reinhard tone mappers, .cube LUTs) embedded as a modal pop-up powered by [exr-viewer](https://github.com/oumad/exr-viewer).
 
 More nodes will be added over time. The pack is structured so adding one is editing one file (see *Layout* below).
@@ -25,13 +26,14 @@ Then restart ComfyUI. The grade panel needs no extra setup — the exr-viewer bu
 
 ## Usage
 
-### LogC3 / LogC4 Decode + Save EXR
-Two sibling nodes with identical I/O — pick the one that matches the curve your LoRA was trained on:
+### LogC3 / LogC4 / ACEScct Decode + Save EXR
+Three sibling nodes with identical I/O — pick the one that matches the curve your LoRA was trained on:
 
 | Node | When to use | Linear ceiling |
 |---|---|---|
 | **Gear · LogC3 Decode + Save EXR** | LoRAs trained on LogC3 targets (LumiVid V9, V5b, klein_step*, the LTX-2 HDR IC-LoRA, etc.) | ~55 linear (≈8.3 stops above 0.18) |
 | **Gear · LogC4 Decode + Save EXR** | LoRAs trained on LogC4 targets (V10 / `*_logc4_*` family) | ~470 linear (≈11.3 stops above 0.18) |
+| **Gear · ACEScct Decode + Save EXR** | LoRAs trained on ACEScct targets (the ACEScct Prodigy r128 family) | ~222.86 linear (≈10.3 stops above 0.18) |
 
 > Picking the wrong decode curve will silently produce wrong linear values — the EXR will look plausibly tonemapped but the absolute luminance will be off. Check your LoRA's name / docs.
 
@@ -72,10 +74,12 @@ ComfyUI_Gear/
 │   ├── __init__.py              # aggregates NODE_CLASS_MAPPINGS
 │   ├── logc3_decode.py
 │   ├── logc4_decode.py
+│   ├── acescct_decode.py
 │   └── color_grade.py
 ├── gear/                        # pure-Python library (no ComfyUI deps)
 │   ├── logc3.py                 # ARRI LogC3 encode/decode (EI 800)
 │   ├── logc4.py                 # ARRI LogC4 encode/decode
+│   ├── acescct.py               # ACEScct (AMPAS S-2016-001) encode/decode
 │   ├── grading.py               # torch port of renderer.ts
 │   └── exr_io.py                # float16 EXR writer
 ├── web/                         # ComfyUI frontend extension
