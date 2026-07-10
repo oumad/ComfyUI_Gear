@@ -33,6 +33,7 @@ precision highp float;
 
 uniform sampler2D uTex;
 uniform sampler2D uTexSDR;
+uniform sampler2D uTexB;
 uniform float uExposure;
 uniform int   uToneMap;
 uniform float uSoftClip;
@@ -44,8 +45,19 @@ uniform float uShadows, uHighlights;
 uniform float uSaturation, uVibrance, uHueShift;
 uniform bool  uFalseColor;
 uniform bool  uCompareOn;
+uniform bool  uCompareHDR;
 uniform float uWipePos;
 uniform vec4  uSDRCrop;
+// Per-side color-space flags: v7 outputs ACEScg (AP1) primaries; convert to Rec.709
+// for display. Other clips are already Rec.709-ish, so the flag is off for them.
+uniform bool  uAP1A;   // current clip (A)
+uniform bool  uAP1B;   // compare clip (B)
+// ACEScg (AP1, D60) -> linear Rec.709 (D65, Bradford CAT). Columns (GLSL is column-major).
+const mat3 AP1_TO_709 = mat3(
+   1.70505, -0.13026, -0.02400,
+  -0.62179,  1.14080, -0.12897,
+  -0.08326, -0.01055,  1.15297
+);
 uniform highp sampler3D uLUT3D;
 uniform bool  uLUTEnabled;
 uniform float uLUTSize;      // e.g. 33.0
@@ -261,17 +273,26 @@ void main(){
     return;
   }
 
-  // Select source: SDR (left of wipe) or HDR (right).
+  // Select source: current clip A (LEFT of wipe) or compare B (RIGHT).
+  // B is on the right to match the "vs" dropdown, which lives on the right of the UI.
   // Zoom/pan are applied at the DOM layer (CSS transform on the canvas)
   // so the shader stays simple and the image overflows the viewport at
   // zoom > 1 instead of being constrained to its original footprint.
   vec3 c;
-  if(uCompareOn && vUv.x < uWipePos){
-    // Remap UVs to sample the center crop of the larger SDR texture
-    vec2 sdrUv = vUv * uSDRCrop.xy + uSDRCrop.zw;
-    c = sRGBToLinear(texture(uTexSDR, sdrUv).rgb);
+  if(uCompareOn && vUv.x > uWipePos){
+    if(uCompareHDR){
+      // B is another HDR output (e.g. a different LoRA): already linear, run the
+      // identical exposure/tonemap pipeline as A for a fair side-by-side.
+      c = texture(uTexB, vUv).rgb;
+      if(uAP1B) c = AP1_TO_709 * c;
+    } else {
+      // Remap UVs to sample the center crop of the larger SDR texture
+      vec2 sdrUv = vUv * uSDRCrop.xy + uSDRCrop.zw;
+      c = sRGBToLinear(texture(uTexSDR, sdrUv).rgb);
+    }
   } else {
     c = texture(uTex, vUv).rgb;
+    if(uAP1A) c = AP1_TO_709 * c;
   }
 
   // 1. Exposure
@@ -382,7 +403,8 @@ const U_NAMES = [
     'uLift', 'uGamma', 'uGain', 'uOffset',
     'uContrast', 'uPivot', 'uShadows', 'uHighlights',
     'uSaturation', 'uVibrance', 'uHueShift', 'uFalseColor',
-    'uCompareOn', 'uWipePos', 'uSDRCrop',
+    'uCompareOn', 'uCompareHDR', 'uWipePos', 'uSDRCrop', 'uTexB',
+    'uAP1A', 'uAP1B',
     'uLUT3D', 'uLUTEnabled', 'uLUTSize',
 ];
 const HIST_W = 320, HIST_H = 180;
@@ -392,6 +414,9 @@ export class HDRRenderer {
         this.imageWidth = 0;
         this.imageHeight = 0;
         this.compareOn = false;
+        this.compareHDR = false;
+        this.ap1A = false; // current clip is ACEScg/AP1 (v7) -> convert to Rec.709 for display
+        this.ap1B = false; // compare clip is ACEScg/AP1
         this.wipePos = 0.5;
         this.sdrCrop = [1, 1, 0, 0];
         this.lutEnabled = false;
@@ -424,6 +449,13 @@ export class HDRRenderer {
         // SDR texture (8-bit, for compare mode)
         this.texSDR = gl.createTexture();
         gl.bindTexture(gl.TEXTURE_2D, this.texSDR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        // HDR-B texture (float, for LoRA-vs-LoRA compare)
+        this.texB = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, this.texB);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
@@ -483,6 +515,20 @@ export class HDRRenderer {
     clearLUT() {
         this.lutEnabled = false;
     }
+    /** Upload another HDR output (RGB float) as the B side for LoRA-vs-LoRA compare. */
+    uploadHDRB(rgb, w, h) {
+        const px = w * h;
+        const rgba = new Float32Array(px * 4);
+        for (let i = 0; i < px; i++) {
+            rgba[i * 4] = rgb[i * 3];
+            rgba[i * 4 + 1] = rgb[i * 3 + 1];
+            rgba[i * 4 + 2] = rgb[i * 3 + 2];
+            rgba[i * 4 + 3] = 1;
+        }
+        const gl = this.gl;
+        gl.bindTexture(gl.TEXTURE_2D, this.texB);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, w, h, 0, gl.RGBA, gl.FLOAT, rgba);
+    }
     /** Upload an SDR PNG for compare mode. */
     uploadSDR(img) {
         const gl = this.gl;
@@ -506,6 +552,12 @@ export class HDRRenderer {
         gl.uniform1i(this.u.uCompareOn, this.compareOn ? 1 : 0);
         gl.uniform1f(this.u.uWipePos, this.wipePos);
         gl.uniform4f(this.u.uSDRCrop, this.sdrCrop[0], this.sdrCrop[1], this.sdrCrop[2], this.sdrCrop[3]);
+        gl.activeTexture(gl.TEXTURE3);
+        gl.bindTexture(gl.TEXTURE_2D, this.texB);
+        gl.uniform1i(this.u.uTexB, 3);
+        gl.uniform1i(this.u.uCompareHDR, this.compareHDR ? 1 : 0);
+        gl.uniform1i(this.u.uAP1A, this.ap1A ? 1 : 0);
+        gl.uniform1i(this.u.uAP1B, this.ap1B ? 1 : 0);
         gl.activeTexture(gl.TEXTURE2);
         gl.bindTexture(gl.TEXTURE_3D, this.lutTex);
         gl.uniform1i(this.u.uLUT3D, 2);

@@ -2,36 +2,138 @@ import { init, decodeRgbExr } from 'exrs';
 import { HDRRenderer, DEFAULT_PARAMS } from './renderer';
 import { ColorWheel, computeHistogram, drawHistogram, drawParade } from './widgets';
 import './style.css';
-// ── Clip catalog (28 clips) ──────────────────────────────
+// ── Clip catalog ─────────────────────────────────────────
+// Clean SDR→HDR encoding comparison: 15 scenes, each in three encodings
+// (LogC3 = original 10k LoRA, LogC4 = v3, ACEScct = v6@5250), generated through
+// the same single-stage pipeline (49 frames, same seed) so they're apples-to-apples.
+// Grouped by scene; use the A|B "vs" dropdown to wipe any 2 (incl. SDR).
+// ACEScg/AP1 variants (v7-line: rank32 v7 + all rank128) need AP1->Rec.709 for display.
+// Rec.709-primary variants (acescct/v6, logc4/v3, logc3/orig) must NOT be converted.
+const AP1_VARIANTS = ['v7', 'r128prod5k', 'r128adamw5k', 'r128prod', 'r128adamw', 'ichdri3k', 'ichdri7k', 'ichdri10k', 'full5k', 'full10k', 'cgi3k', 'cgi55', 'full7k', 't2vprod', 'nostraw', 'hdri'];
+const isAP1 = (clip) => AP1_VARIANTS.includes(clip.split('__').pop() || '');
 const CLIPS = [
-    { id: 'dandelion_girl_sunset', label: 'Dandelion Girl Sunset', frames: 97 },
-    { id: 'airport_silhouettes_sunset', label: 'Airport Silhouettes Sunset', frames: 121 },
-    { id: 'ballerina_arch_spotlight', label: 'Ballerina Arch Spotlight', frames: 121 },
-    { id: 'ballerina_window_light', label: 'Ballerina Window Light', frames: 121 },
-    { id: 'ballerina_window_reach', label: 'Ballerina Window Reach', frames: 121 },
-    { id: 'big_ben_tower', label: 'Big Ben Tower', frames: 75 },
-    { id: 'boy_cozy_room_moody', label: 'Boy Cozy Room Moody', frames: 121 },
-    { id: 'carousel_night_glow', label: 'Carousel Night Glow', frames: 121 },
-    { id: 'cathedral_dome_light', label: 'Cathedral Dome Light', frames: 121 },
-    { id: 'cattle_meadow_backlit', label: 'Cattle Meadow Backlit', frames: 121 },
-    { id: 'city_highway_night', label: 'City Highway Night', frames: 121 },
-    { id: 'city_rooftops_aerial', label: 'City Rooftops Aerial', frames: 121 },
-    { id: 'city_roundabout_night', label: 'City Roundabout Night', frames: 121 },
-    { id: 'dancer_blue_studio', label: 'Dancer Blue Studio', frames: 121 },
-    { id: 'driver_golden_hour_car', label: 'Driver Golden Hour Car', frames: 121 },
-    { id: 'dusk_field_clouds', label: 'Dusk Field Clouds', frames: 121 },
-    { id: 'forest_stream_golden', label: 'Forest Stream Golden', frames: 121 },
-    { id: 'girls_bokeh_picnic', label: 'Girls Bokeh Picnic', frames: 57 },
-    { id: 'golden_street_tower', label: 'Golden Street Tower', frames: 121 },
-    { id: 'greek_alley_flowers', label: 'Greek Alley Flowers', frames: 121 },
-    { id: 'horse_pasture_silhouette', label: 'Horse Pasture Silhouette', frames: 121 },
-    { id: 'lakeside_arches_vista', label: 'Lakeside Arches Vista', frames: 121 },
-    { id: 'misty_mountains_sunrise', label: 'Misty Mountains Sunrise', frames: 121 },
-    { id: 'mountain_road_canyon', label: 'Mountain Road Canyon', frames: 121 },
-    { id: 'mountain_sunrise_portrait', label: 'Mountain Sunrise Portrait', frames: 121 },
-    { id: 'neon_dancer_club', label: 'Neon Dancer Club', frames: 121 },
-    { id: 'night_vendor_cart', label: 'Night Vendor Cart', frames: 121 },
-    { id: 'river_cascade_sunlit', label: 'River Cascade Sunlit', frames: 121 },
+    // Clean SDR->HDR encoding comparison: each scene in LogC3 / LogC4 / ACEScct.
+    // A|B 'vs' dropdown wipes any 2 (incl. SDR). Same pipeline/seed/49f -> apples-to-apples.
+    { id: 'dandelion_girl_sunset__r128prod', label: 'ACEScct (Prodigy r128 @10k)', frames: 49, category: 'Dandelion sunset' },
+    { id: 'dandelion_girl_sunset__logc4', label: 'LogC4 (v3)', frames: 49, category: 'Dandelion sunset' },
+    { id: 'dandelion_girl_sunset__logc3', label: 'LogC3 (orig)', frames: 49, category: 'Dandelion sunset' },
+    { id: 'carousel_night_glow__r128prod', label: 'ACEScct (Prodigy r128 @10k)', frames: 49, category: 'Carousel night' },
+    { id: 'carousel_night_glow__logc4', label: 'LogC4 (v3)', frames: 49, category: 'Carousel night' },
+    { id: 'carousel_night_glow__logc3', label: 'LogC3 (orig)', frames: 49, category: 'Carousel night' },
+    { id: 'city_highway_night__r128prod', label: 'ACEScct (Prodigy r128 @10k)', frames: 49, category: 'City highway night' },
+    { id: 'city_highway_night__logc4', label: 'LogC4 (v3)', frames: 49, category: 'City highway night' },
+    { id: 'city_highway_night__logc3', label: 'LogC3 (orig)', frames: 49, category: 'City highway night' },
+    { id: 'ballerina_arch_spotlight__r128prod', label: 'ACEScct (Prodigy r128 @10k)', frames: 49, category: 'Ballerina arch' },
+    { id: 'ballerina_arch_spotlight__logc4', label: 'LogC4 (v3)', frames: 49, category: 'Ballerina arch' },
+    { id: 'ballerina_arch_spotlight__logc3', label: 'LogC3 (orig)', frames: 49, category: 'Ballerina arch' },
+    { id: 'ballerina_window_reach__r128prod', label: 'ACEScct (Prodigy r128 @10k)', frames: 49, category: 'Ballerina window' },
+    { id: 'ballerina_window_reach__logc4', label: 'LogC4 (v3)', frames: 49, category: 'Ballerina window' },
+    { id: 'ballerina_window_reach__logc3', label: 'LogC3 (orig)', frames: 49, category: 'Ballerina window' },
+    { id: 'boy_cozy_room_moody__r128prod', label: 'ACEScct (Prodigy r128 @10k)', frames: 49, category: 'Boy cozy room' },
+    { id: 'boy_cozy_room_moody__logc4', label: 'LogC4 (v3)', frames: 49, category: 'Boy cozy room' },
+    { id: 'boy_cozy_room_moody__logc3', label: 'LogC3 (orig)', frames: 49, category: 'Boy cozy room' },
+    { id: 'cathedral_dome_light__r128prod', label: 'ACEScct (Prodigy r128 @10k)', frames: 49, category: 'Cathedral dome' },
+    { id: 'cathedral_dome_light__logc4', label: 'LogC4 (v3)', frames: 49, category: 'Cathedral dome' },
+    { id: 'cathedral_dome_light__logc3', label: 'LogC3 (orig)', frames: 49, category: 'Cathedral dome' },
+    { id: 'driver_golden_hour_car__r128prod', label: 'ACEScct (Prodigy r128 @10k)', frames: 49, category: 'Driver golden hour' },
+    { id: 'driver_golden_hour_car__logc4', label: 'LogC4 (v3)', frames: 49, category: 'Driver golden hour' },
+    { id: 'driver_golden_hour_car__logc3', label: 'LogC3 (orig)', frames: 49, category: 'Driver golden hour' },
+    { id: 'dusk_field_clouds__r128prod', label: 'ACEScct (Prodigy r128 @10k)', frames: 49, category: 'Dusk field' },
+    { id: 'dusk_field_clouds__logc4', label: 'LogC4 (v3)', frames: 49, category: 'Dusk field' },
+    { id: 'dusk_field_clouds__logc3', label: 'LogC3 (orig)', frames: 49, category: 'Dusk field' },
+    { id: 'girls_bokeh_picnic__r128prod', label: 'ACEScct (Prodigy r128 @10k)', frames: 49, category: 'Girls bokeh picnic' },
+    { id: 'girls_bokeh_picnic__logc4', label: 'LogC4 (v3)', frames: 49, category: 'Girls bokeh picnic' },
+    { id: 'girls_bokeh_picnic__logc3', label: 'LogC3 (orig)', frames: 49, category: 'Girls bokeh picnic' },
+    { id: 'golden_street_tower__r128prod', label: 'ACEScct (Prodigy r128 @10k)', frames: 49, category: 'Golden street tower' },
+    { id: 'golden_street_tower__logc4', label: 'LogC4 (v3)', frames: 49, category: 'Golden street tower' },
+    { id: 'golden_street_tower__logc3', label: 'LogC3 (orig)', frames: 49, category: 'Golden street tower' },
+    { id: 'misty_mountains_sunrise__r128prod', label: 'ACEScct (Prodigy r128 @10k)', frames: 49, category: 'Misty mountains' },
+    { id: 'misty_mountains_sunrise__logc4', label: 'LogC4 (v3)', frames: 49, category: 'Misty mountains' },
+    { id: 'misty_mountains_sunrise__logc3', label: 'LogC3 (orig)', frames: 49, category: 'Misty mountains' },
+    { id: 'neon_dancer_club__r128prod', label: 'ACEScct (Prodigy r128 @10k)', frames: 49, category: 'Neon dancer' },
+    { id: 'neon_dancer_club__logc4', label: 'LogC4 (v3)', frames: 49, category: 'Neon dancer' },
+    { id: 'neon_dancer_club__logc3', label: 'LogC3 (orig)', frames: 49, category: 'Neon dancer' },
+    { id: 'night_vendor_cart__r128prod', label: 'ACEScct (Prodigy r128 @10k)', frames: 49, category: 'Night vendor' },
+    { id: 'night_vendor_cart__logc4', label: 'LogC4 (v3)', frames: 49, category: 'Night vendor' },
+    { id: 'night_vendor_cart__logc3', label: 'LogC3 (orig)', frames: 49, category: 'Night vendor' },
+    { id: 'river_cascade_sunlit__r128prod', label: 'ACEScct (Prodigy r128 @10k)', frames: 49, category: 'River cascade' },
+    { id: 'river_cascade_sunlit__logc4', label: 'LogC4 (v3)', frames: 49, category: 'River cascade' },
+    { id: 'river_cascade_sunlit__logc3', label: 'LogC3 (orig)', frames: 49, category: 'River cascade' },
+    { id: 'airport_silhouettes_sunset__r128prod', label: 'ACEScct (Prodigy r128 @10k)', frames: 49, category: 'Airport silhouettes' },
+    { id: 'airport_silhouettes_sunset__logc4', label: 'LogC4 (v3)', frames: 49, category: 'Airport silhouettes' },
+    { id: 'airport_silhouettes_sunset__logc3', label: 'LogC3 (orig)', frames: 49, category: 'Airport silhouettes' },
+    { id: 'ballerina_window_light__r128prod', label: 'ACEScct (Prodigy r128 @10k)', frames: 49, category: 'Ballerina window light' },
+    { id: 'ballerina_window_light__logc4', label: 'LogC4 (v3)', frames: 49, category: 'Ballerina window light' },
+    { id: 'ballerina_window_light__logc3', label: 'LogC3 (orig)', frames: 49, category: 'Ballerina window light' },
+    { id: 'big_ben_tower__r128prod', label: 'ACEScct (Prodigy r128 @10k)', frames: 49, category: 'Big Ben tower' },
+    { id: 'big_ben_tower__logc4', label: 'LogC4 (v3)', frames: 49, category: 'Big Ben tower' },
+    { id: 'big_ben_tower__logc3', label: 'LogC3 (orig)', frames: 49, category: 'Big Ben tower' },
+    { id: 'cattle_meadow_backlit__r128prod', label: 'ACEScct (Prodigy r128 @10k)', frames: 49, category: 'Cattle meadow' },
+    { id: 'cattle_meadow_backlit__logc4', label: 'LogC4 (v3)', frames: 49, category: 'Cattle meadow' },
+    { id: 'cattle_meadow_backlit__logc3', label: 'LogC3 (orig)', frames: 49, category: 'Cattle meadow' },
+    { id: 'city_rooftops_aerial__r128prod', label: 'ACEScct (Prodigy r128 @10k)', frames: 49, category: 'City rooftops aerial' },
+    { id: 'city_rooftops_aerial__logc4', label: 'LogC4 (v3)', frames: 49, category: 'City rooftops aerial' },
+    { id: 'city_rooftops_aerial__logc3', label: 'LogC3 (orig)', frames: 49, category: 'City rooftops aerial' },
+    { id: 'city_roundabout_night__r128prod', label: 'ACEScct (Prodigy r128 @10k)', frames: 49, category: 'City roundabout night' },
+    { id: 'city_roundabout_night__logc4', label: 'LogC4 (v3)', frames: 49, category: 'City roundabout night' },
+    { id: 'city_roundabout_night__logc3', label: 'LogC3 (orig)', frames: 49, category: 'City roundabout night' },
+    { id: 'dancer_blue_studio__r128prod', label: 'ACEScct (Prodigy r128 @10k)', frames: 49, category: 'Dancer blue studio' },
+    { id: 'dancer_blue_studio__logc4', label: 'LogC4 (v3)', frames: 49, category: 'Dancer blue studio' },
+    { id: 'dancer_blue_studio__logc3', label: 'LogC3 (orig)', frames: 49, category: 'Dancer blue studio' },
+    { id: 'forest_stream_golden__r128prod', label: 'ACEScct (Prodigy r128 @10k)', frames: 49, category: 'Forest stream golden' },
+    { id: 'forest_stream_golden__logc4', label: 'LogC4 (v3)', frames: 49, category: 'Forest stream golden' },
+    { id: 'forest_stream_golden__logc3', label: 'LogC3 (orig)', frames: 49, category: 'Forest stream golden' },
+    { id: 'greek_alley_flowers__r128prod', label: 'ACEScct (Prodigy r128 @10k)', frames: 49, category: 'Greek alley flowers' },
+    { id: 'greek_alley_flowers__logc4', label: 'LogC4 (v3)', frames: 49, category: 'Greek alley flowers' },
+    { id: 'greek_alley_flowers__logc3', label: 'LogC3 (orig)', frames: 49, category: 'Greek alley flowers' },
+    { id: 'horse_pasture_silhouette__r128prod', label: 'ACEScct (Prodigy r128 @10k)', frames: 49, category: 'Horse pasture' },
+    { id: 'horse_pasture_silhouette__logc4', label: 'LogC4 (v3)', frames: 49, category: 'Horse pasture' },
+    { id: 'horse_pasture_silhouette__logc3', label: 'LogC3 (orig)', frames: 49, category: 'Horse pasture' },
+    { id: 'lakeside_arches_vista__r128prod', label: 'ACEScct (Prodigy r128 @10k)', frames: 49, category: 'Lakeside arches' },
+    { id: 'lakeside_arches_vista__logc4', label: 'LogC4 (v3)', frames: 49, category: 'Lakeside arches' },
+    { id: 'lakeside_arches_vista__logc3', label: 'LogC3 (orig)', frames: 49, category: 'Lakeside arches' },
+    { id: 'mountain_road_canyon__r128prod', label: 'ACEScct (Prodigy r128 @10k)', frames: 49, category: 'Mountain road canyon' },
+    { id: 'mountain_road_canyon__logc4', label: 'LogC4 (v3)', frames: 49, category: 'Mountain road canyon' },
+    { id: 'mountain_road_canyon__logc3', label: 'LogC3 (orig)', frames: 49, category: 'Mountain road canyon' },
+    { id: 'mountain_sunrise_portrait__r128prod', label: 'ACEScct (Prodigy r128 @10k)', frames: 49, category: 'Mountain sunrise' },
+    { id: 'mountain_sunrise_portrait__logc4', label: 'LogC4 (v3)', frames: 49, category: 'Mountain sunrise' },
+    { id: 'mountain_sunrise_portrait__logc3', label: 'LogC3 (orig)', frames: 49, category: 'Mountain sunrise' },
+    { id: 'sunlit_loft_windows__r128prod', label: 'ACEScct (Prodigy r128 @10k)', frames: 49, category: 'Sunlit loft' },
+    { id: 'sunlit_loft_windows__logc4', label: 'LogC4 (v3)', frames: 49, category: 'Sunlit loft' },
+    { id: 'sunlit_loft_windows__logc3', label: 'LogC3 (orig)', frames: 49, category: 'Sunlit loft' },
+    // ===== Benchmark: ACEScct Prodigy r128 vs original LogC3 (ltx2.3-hdr-10k) =====
+    { id: 'benchmark_red__r128prod', label: 'ACEScct Prodigy r128 @10k (prev top)', frames: 49, category: 'Benchmark: benchmark_red' },
+    { id: 'benchmark_red__nostraw', label: 'ACEScct nostraw @10k (NEW)', frames: 49, category: 'Benchmark: benchmark_red' },
+    { id: 'benchmark_red__hdri', label: 'ACEScct HDRI-only @10k', frames: 49, category: 'Benchmark: benchmark_red' },
+    { id: 'benchmark_red__logc3', label: 'LogC3 orig', frames: 49, category: 'Benchmark: benchmark_red' },
+    { id: 'vid__r128prod', label: 'ACEScct Prodigy r128 @10k (prev top)', frames: 49, category: 'Benchmark: vid' },
+    { id: 'vid__nostraw', label: 'ACEScct nostraw @10k (NEW)', frames: 49, category: 'Benchmark: vid' },
+    { id: 'vid__hdri', label: 'ACEScct HDRI-only @10k', frames: 49, category: 'Benchmark: vid' },
+    { id: 'vid__logc3', label: 'LogC3 orig', frames: 49, category: 'Benchmark: vid' },
+    { id: 'tire_dry__r128prod', label: 'ACEScct Prodigy r128 @10k (prev top)', frames: 49, category: 'Benchmark: tire dry' },
+    { id: 'tire_dry__nostraw', label: 'ACEScct nostraw @10k (NEW)', frames: 49, category: 'Benchmark: tire dry' },
+    { id: 'tire_dry__hdri', label: 'ACEScct HDRI-only @10k', frames: 49, category: 'Benchmark: tire dry' },
+    { id: 'tire_dry__logc3', label: 'LogC3 orig', frames: 49, category: 'Benchmark: tire dry' },
+    { id: 'tire_wet__r128prod', label: 'ACEScct Prodigy r128 @10k (prev top)', frames: 49, category: 'Benchmark: tire wet' },
+    { id: 'tire_wet__nostraw', label: 'ACEScct nostraw @10k (NEW)', frames: 49, category: 'Benchmark: tire wet' },
+    { id: 'tire_wet__hdri', label: 'ACEScct HDRI-only @10k', frames: 49, category: 'Benchmark: tire wet' },
+    { id: 'tire_wet__logc3', label: 'LogC3 orig', frames: 49, category: 'Benchmark: tire wet' },
+    // ===== t2v: text -> HDR (standard non-IC Prodigy LoRA, no input) =====
+    { id: 'window_loft__t2vprod', label: 'sunlit loft (p99.9 217)', frames: 49, category: 't2v — text to HDR' },
+    { id: 'coastal_goldenhour__t2vprod', label: 'coastal golden hour (p99.9 214)', frames: 49, category: 't2v — text to HDR' },
+    { id: 'cathedral_light__t2vprod', label: 'cathedral light-shafts (p99.9 118)', frames: 49, category: 't2v — text to HDR' },
+    { id: 'mountain_sunrise_t2v__t2vprod', label: 'mountain sunrise (p99.9 114)', frames: 49, category: 't2v — text to HDR' },
+    { id: 'sunset_street__t2vprod', label: 'sunset street (p99.9 92)', frames: 49, category: 't2v — text to HDR' },
+    { id: 'wet_highway_night__t2vprod', label: 'wet highway neon (p99.9 62)', frames: 49, category: 't2v — text to HDR' },
+    { id: 'campfire_night__t2vprod', label: 'campfire night (p99.9 59)', frames: 49, category: 't2v — text to HDR' },
+    { id: 'neon_night__t2vprod', label: 'neon night (p99.9 49)', frames: 49, category: 't2v — text to HDR' },
+    { id: 'spotlit_dancer__t2vprod', label: 'spotlit dancer (p99.9 6, dark)', frames: 49, category: 't2v — text to HDR' },
+    // ===== i2v: image -> HDR (float ACEScg EXR start frame) =====
+    { id: 'i2v_chrome__t2vprod', label: 'chrome spheres, 562 src (p99.9 217)', frames: 49, category: 'i2v — image to HDR' },
+    { id: 'i2v_neon__t2vprod', label: 'studio neon (p99.9 86)', frames: 49, category: 'i2v — image to HDR' },
+    { id: 'i2v_market__t2vprod', label: 'medieval market (p99.9 24)', frames: 49, category: 'i2v — image to HDR' },
+    { id: 'i2v_stilllife__t2vprod', label: 'still life, float-fixed (p99.9 18)', frames: 49, category: 'i2v — image to HDR' },
+    { id: 'i2v_vehicles__t2vprod', label: 'enchanted vehicles (p99.9 6, dark)', frames: 49, category: 'i2v — image to HDR' },
 ];
 // ── State ────────────────────────────────────────────────
 let renderer;
@@ -41,6 +143,9 @@ let params = structuredClone(DEFAULT_PARAMS);
 let currentClip = CLIPS[0];
 let currentFrame = Math.floor(currentClip.frames / 2);
 let loading = false;
+// Fit-to-viewport only on the very first image; afterwards keep the user's zoom/pan
+// across clip switches and frame scrubs (all clips share the same resolution). 'F'/'0' re-fits.
+let viewInitialized = false;
 let wheels;
 let scopeCtx;
 let scopeMode = 'histogram';
@@ -49,6 +154,16 @@ let lastHistPixels = null;
 // SDR compare
 let compareOn = false;
 let wipePos = 0.5;
+// A|B compare source: null = SDR, otherwise a clip id (another LoRA's HDR output)
+let compareBClip = null;
+// Remember the chosen comparison ENCODING (the '__<enc>' suffix, e.g. 'acescct') so it
+// persists across footage switches: picking a new scene keeps comparing vs that encoding
+// of the new scene. null = compare vs SDR.
+let compareEnc = null;
+// Raw bytes of the currently displayed EXR, kept so the toolbar download
+// button can save the original file (not a re-encode). Set in every load path.
+let lastExrBytes = null;
+let lastExrName = 'frame.exr';
 const $ = (s) => document.querySelector(s);
 // ── Embed mode (for ComfyUI_Gear and other hosts) ───────
 // Activated by `?embed=1`. Hides clip picker + timeline, waits for the
@@ -81,6 +196,7 @@ async function boot() {
     gain.onUpdate = () => { params.gain = gain.values; renderAndHist(); };
     offset.onUpdate = () => { params.offset = offset.values; renderAndHist(); };
     wireToolbar();
+    setupDownloadBtn();
     if (!EMBED)
         wireTimeline(); // embed mode wires the scrubber lazily in setupSequence()
     wirePanel();
@@ -177,6 +293,7 @@ async function loadSequenceFrame(i) {
             return; // superseded by a newer scrub
         currentSeqIndex = i;
         await loadExrBuffer(buf);
+        lastExrName = `frame_${String(i).padStart(5, '0')}.exr`;
         // If host provided per-frame SDR, swap it in too so A|B compare works
         // across the whole sequence.
         if (sequenceSdrUrls && sequenceSdrUrls[i]) {
@@ -225,6 +342,8 @@ async function loadExrBuffer(bytes) {
         const t0 = performance.now();
         const dec = decodeRgbExr(bytes);
         const dt = (performance.now() - t0).toFixed(0);
+        lastExrBytes = bytes;
+        lastExrName = 'frame.exr'; // caller (sequence) may rename
         rgbData = dec.interleavedRgbPixels;
         imgW = dec.width;
         imgH = dec.height;
@@ -236,6 +355,7 @@ async function loadExrBuffer(bytes) {
         // (e.g. a slider move) forces a re-render in a compositor-synced frame.
         requestAnimationFrame(() => renderAndHist());
         $('#info-res').textContent = `${imgW}×${imgH}`;
+        showExrDepth(bytes, rgbData, imgW, imgH);
         $('#info-decode').textContent = `${dt} ms`;
         ov.classList.add('hidden');
     }
@@ -315,6 +435,168 @@ function applyParamsToUI(p, wheelStates) {
         applyingRemoteParams = false;
     }
 }
+// Read the channel pixel type straight from the EXR header, so the reported
+// bit depth reflects the actual file rather than an assumption. exrs' decoder
+// hands back only {width,height,pixels} and drops the pixel type, so we sniff
+// the header ourselves. Returns null for non-EXR / unparseable input.
+// pixelType per the OpenEXR spec: 0=UINT (32b), 1=HALF (16b), 2=FLOAT (32b).
+function exrChannelDepth(bytes) {
+    const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    if (bytes.length < 8 || dv.getUint32(0, true) !== 20000630)
+        return null; // bad magic
+    let p = 8; // skip 4-byte magic + 4-byte version field
+    const readStr = (limit) => {
+        let s = '';
+        while (p < limit && bytes[p] !== 0)
+            s += String.fromCharCode(bytes[p++]);
+        p++; // consume null terminator
+        return s;
+    };
+    while (p < bytes.length) {
+        const name = readStr(bytes.length);
+        if (!name)
+            break; // empty name = end of header
+        const type = readStr(bytes.length);
+        const size = dv.getInt32(p, true);
+        p += 4;
+        const end = p + size;
+        if (name === 'channels' && type === 'chlist') {
+            let maxType = -1, count = 0;
+            while (p < end) {
+                let cname = '';
+                while (p < end && bytes[p] !== 0)
+                    cname += String.fromCharCode(bytes[p++]);
+                p++;
+                if (!cname)
+                    break; // empty name = end of channel list
+                maxType = Math.max(maxType, dv.getInt32(p, true));
+                p += 4;
+                p += 4 + 8; // pLinear + 3 reserved, then xSampling + ySampling
+                count++;
+            }
+            if (maxType < 0)
+                return null;
+            const bits = maxType === 1 ? 16 : 32;
+            const label = maxType === 1 ? '16-bit half' : maxType === 2 ? '32-bit float' : '32-bit uint';
+            const kind = maxType === 1 ? 'half-float' : maxType === 2 ? 'float' : 'uint';
+            return { label, detail: `${bits}-bit ${kind} per channel · ${count}×${bits} = ${count * bits} bpp` };
+        }
+        p = end; // not the channels attr — skip its value
+    }
+    return null;
+}
+// Float32 → IEEE half-float bit pattern. Used to count how many of the
+// container's 16-bit levels the signal actually occupies (its *effective*
+// depth) — the bit pattern collapses sub-half noise and caps the count at the
+// container, so the estimate can't exceed what the file can hold.
+const _f32buf = new Float32Array(1);
+const _i32buf = new Int32Array(_f32buf.buffer);
+function f16bits(val) {
+    _f32buf[0] = val;
+    const x = _i32buf[0];
+    const sign = (x >>> 16) & 0x8000;
+    let exp = (x >>> 23) & 0xff;
+    let mant = x & 0x007fffff;
+    if (exp === 0xff)
+        return sign | 0x7c00 | (mant ? 0x200 : 0); // inf / nan
+    exp = exp - 127 + 15;
+    if (exp >= 31)
+        return sign | 0x7c00; // overflow → inf
+    if (exp <= 0) { // subnormal / underflow
+        if (exp < -10)
+            return sign;
+        mant = (mant | 0x00800000) >> (1 - exp);
+        return sign | (mant >> 13);
+    }
+    return sign | (exp << 10) | (mant >> 13);
+}
+// Measure the tonal information the model actually produced, from the decoded
+// linear buffer. "Effective bits" = log2(distinct half-levels occupied) — a
+// pure tone curve over 8-bit input couldn't exceed 8; spatial synthesis pushes
+// it toward the container ceiling. "stops" = how far highlights reach past SDR
+// white (luminance 1.0), read off a robust p99.9 percentile.
+function analyzeHdrDepth(rgb, n) {
+    if (!rgb || n <= 0)
+        return null;
+    // Distinct-level counts are biased low under subsampling, so process every
+    // pixel up to ~4M (these frames are ~2M → stride 1); only very large frames
+    // get strided. This is a full-image pass — callers run it deferred.
+    const stride = Math.max(1, Math.floor(n / 4000000));
+    const pres = [new Uint8Array(65536), new Uint8Array(65536), new Uint8Array(65536)];
+    const BINS = 256, LO = -12, HI = 12, SPAN = HI - LO; // log2-luminance histogram
+    const BSCALE = BINS / SPAN;
+    const lh = new Uint32Array(BINS);
+    let lcount = 0;
+    for (let i = 0; i < n; i += stride) {
+        const o = i * 3;
+        const r = rgb[o], g = rgb[o + 1], b = rgb[o + 2];
+        pres[0][f16bits(r)] = 1;
+        pres[1][f16bits(g)] = 1;
+        pres[2][f16bits(b)] = 1;
+        const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+        if (lum > 0) {
+            // cheap log2 via the float exponent + linear-interpolated mantissa
+            // (≤0.086 error — well under one 0.094-stop bin); avoids Math.log2.
+            _f32buf[0] = lum;
+            const xb = _i32buf[0];
+            const log2lum = (((xb >>> 23) & 0xff) - 127) + (xb & 0x7fffff) / 0x800000;
+            let bi = ((log2lum - LO) * BSCALE) | 0;
+            if (bi < 0)
+                bi = 0;
+            else if (bi >= BINS)
+                bi = BINS - 1;
+            lh[bi]++;
+            lcount++;
+        }
+    }
+    const count = (p) => { let c = 0; for (let i = 0; i < 65536; i++)
+        c += p[i]; return c; };
+    const d = [count(pres[0]), count(pres[1]), count(pres[2])].sort((a, b) => a - b);
+    const distinct = d[1]; // median channel — conservative
+    const effBits = Math.log2(Math.max(distinct, 1));
+    let acc = 0;
+    const thr = lcount * 0.999;
+    let pbin = BINS - 1;
+    for (let i = 0; i < BINS; i++) {
+        acc += lh[i];
+        if (acc >= thr) {
+            pbin = i;
+            break;
+        }
+    }
+    const stops = Math.max(0, LO + ((pbin + 0.5) / BINS) * SPAN);
+    return { effBits, bitsGained: effBits - 8, stops, distinct };
+}
+let _depthToken = 0;
+function showExrDepth(bytes, rgb, w, h) {
+    const d = exrChannelDepth(bytes);
+    const el = $('#info-depth');
+    if (!d) {
+        el.textContent = '';
+        el.title = '';
+        return;
+    }
+    // Container label is free (header sniff) — show it immediately.
+    el.textContent = d.label;
+    el.title = d.detail;
+    // The effective-depth estimate is a full-image pass (~70ms). Run it off the
+    // decode path and cancel if a newer frame arrives, so scrubbing stays smooth
+    // and only the frame the user lands on pays the cost.
+    const tok = ++_depthToken;
+    setTimeout(() => {
+        if (tok !== _depthToken)
+            return; // superseded by a newer frame
+        const a = analyzeHdrDepth(rgb, w * h);
+        if (tok !== _depthToken || !a)
+            return;
+        el.textContent = `${d.label} · ~${Math.round(a.effBits)}-bit effective`;
+        el.title =
+            `Container: ${d.detail}\n` +
+                `Measured (live): 8-bit SDR in → ~${a.effBits.toFixed(1)}-bit out\n` +
+                `+${a.bitsGained.toFixed(1)} bits tonal detail vs 8-bit · +${a.stops.toFixed(1)} stops over SDR white\n` +
+                `${a.distinct.toLocaleString()} distinct levels/channel`;
+    }, 50);
+}
 // ── EXR loading ──────────────────────────────────────────
 // In dev: /clips/ is served by Vite middleware from ../clips/.
 // In prod: Vite injects VITE_CLIP_BASE_URL (e.g. HuggingFace dataset URL).
@@ -342,17 +624,23 @@ async function loadFrame(clip, frame) {
         const t0 = performance.now();
         const dec = decodeRgbExr(buf);
         const dt = (performance.now() - t0).toFixed(0);
+        lastExrBytes = buf;
+        lastExrName = `${clip}_f${String(frame).padStart(5, '0')}.exr`;
         rgbData = dec.interleavedRgbPixels;
         imgW = dec.width;
         imgH = dec.height;
+        renderer.ap1A = isAP1(clip); // v7-line (incl. rank128) = ACEScg (AP1) -> convert to Rec.709 for display
         renderer.uploadImage(rgbData, imgW, imgH);
-        resetView($('#canvas')); // standalone clip browser also fits each new frame
+        if (!viewInitialized) {
+            resetView($('#canvas'));
+            viewInitialized = true;
+        }
         renderAndHist();
         $('#info-res').textContent = `${imgW}\u00d7${imgH}`;
+        showExrDepth(buf, rgbData, imgW, imgH);
         $('#info-decode').textContent = `${dt} ms`;
-        // load SDR counterpart if compare is on
-        if (compareOn)
-            loadSDR(clip, frame);
+        // load the B side (SDR or another LoRA) if compare is on
+        refreshCompareB(clip, frame);
     }
     catch (e) {
         ov.textContent = `Error: ${e.message}`;
@@ -389,8 +677,43 @@ function parseCube(text) {
         return null;
     return { size, data: new Float32Array(values) };
 }
+// Load another LoRA's HDR EXR (current frame) as the B side of the wipe.
+async function loadCompareB(clip, frame) {
+    try {
+        const resp = await fetch(frameUrl(clip, frame));
+        if (!resp.ok) {
+            renderer.compareHDR = false;
+            return;
+        }
+        const dec = decodeRgbExr(new Uint8Array(await resp.arrayBuffer()));
+        renderer.ap1B = isAP1(clip); // v7-line (incl. rank128) = ACEScg (AP1) on the compare side too
+        renderer.uploadHDRB(dec.interleavedRgbPixels, dec.width, dec.height);
+        renderer.compareHDR = true;
+        renderAndHist();
+    }
+    catch {
+        renderer.compareHDR = false;
+    }
+}
+// Refresh the B side for the current compare source (SDR or another LoRA).
+function refreshCompareB(clip, frame) {
+    if (!compareOn)
+        return;
+    if (compareBClip)
+        loadCompareB(compareBClip, frame);
+    else {
+        renderer.compareHDR = false;
+        renderer.ap1B = false;
+        loadSDR(clip, frame);
+    }
+}
 function loadSDR(clip, frame) {
     const img = new Image();
+    // SDR is uploaded to a WebGL texture; a cross-origin image (prod clips come from
+    // the HuggingFace dataset) must be CORS-approved or texImage2D throws SecurityError
+    // and the SDR side renders black. HF sends ACAO:*, so anonymous CORS succeeds.
+    // Harmless for same-origin dev (/clips/...).
+    img.crossOrigin = 'anonymous';
     img.onload = () => {
         renderer.uploadSDR(img);
         // Compute crop mapping: HDR UVs [0,1] → center crop of SDR
@@ -466,6 +789,7 @@ function wireToolbar() {
         }
         function selectClip(i) {
             currentClip = CLIPS[i];
+            repopulateCompareSrc(); // refresh A|B "compare against" options for the new scene
             const fs = $('#frame-slider');
             fs.max = String(currentClip.frames - 1);
             $('#tl-end').textContent = String(currentClip.frames - 1);
@@ -479,7 +803,16 @@ function wireToolbar() {
             popup.classList.remove('open');
             loadFrame(currentClip.id, currentFrame);
         }
+        let prevCategory = null;
         CLIPS.forEach((c, i) => {
+            // Category header — emitted once per category transition.
+            if (c.category !== prevCategory) {
+                const header = document.createElement('div');
+                header.className = 'clip-category';
+                header.textContent = c.category;
+                grid.appendChild(header);
+                prevCategory = c.category;
+            }
             const item = document.createElement('div');
             item.className = 'clip-item' + (i === 0 ? ' active' : '');
             item.innerHTML =
@@ -508,7 +841,7 @@ function wireToolbar() {
     const evNum = $('#tb-ev');
     const evReset = $('#ev-reset');
     function setEV(val) {
-        val = Math.max(-6, Math.min(6, val));
+        val = Math.max(-7, Math.min(7, val));
         params.exposure = val;
         evSlider.value = String(val);
         evNum.value = val.toFixed(2);
@@ -643,6 +976,96 @@ function wirePanelResize() {
     });
 }
 // ── SDR Compare (wipe) ───────────────────────────────────
+// A|B compare-source dropdown: pick "SDR" or another LoRA's output of the SAME scene.
+function setupCompareSrc() {
+    const btn = $('#btn-compare');
+    const sel = document.createElement('select');
+    sel.id = 'compare-src';
+    sel.title = 'A|B: what to compare against (shown on the right of the wipe)';
+    sel.style.cssText = 'margin-left:4px;max-width:210px;font-size:11px;vertical-align:middle;';
+    btn.insertAdjacentElement('afterend', sel);
+    sel.addEventListener('change', () => {
+        compareBClip = sel.value === '__sdr' ? null : sel.value;
+        compareEnc = compareBClip ? (compareBClip.split('__')[1] ?? null) : null;
+        updateWipeLabels();
+        refreshCompareB(currentClip.id, currentFrame);
+        renderAndHist();
+    });
+    repopulateCompareSrc();
+}
+// Wipe labels reflect what's ACTUALLY on screen: left = the current clip (A),
+// right = the compare target (B = SDR or another encoding).
+function shortEncLabel(l) {
+    return l.includes('—') ? l.split('—').pop().trim() : l;
+}
+function updateWipeLabels() {
+    const lblL = document.querySelector('#wipe-label-l');
+    const lblR = document.querySelector('#wipe-label-r');
+    if (lblL)
+        lblL.textContent = shortEncLabel(currentClip.label);
+    if (lblR)
+        lblR.textContent = compareBClip
+            ? shortEncLabel(CLIPS.find(c => c.id === compareBClip)?.label ?? 'B')
+            : 'SDR';
+}
+// ── Download current EXR ─────────────────────────────────
+// Saves the original EXR bytes of the frame on screen (clip browser, sequence,
+// or single embed push) — not a re-encode, so the float HDR is preserved.
+function downloadCurrentExr() {
+    if (!lastExrBytes)
+        return;
+    // Copy into a fresh ArrayBuffer so the Blob part is unambiguously an
+    // ArrayBuffer (lastExrBytes may be a view into a larger/shared buffer).
+    const ab = new ArrayBuffer(lastExrBytes.byteLength);
+    new Uint8Array(ab).set(lastExrBytes);
+    const blob = new Blob([ab], { type: 'image/x-exr' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = lastExrName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+function setupDownloadBtn() {
+    const btn = document.querySelector('#btn-download');
+    if (btn)
+        btn.addEventListener('click', downloadCurrentExr);
+    window.addEventListener('keydown', (e) => {
+        const tag = document.activeElement?.tagName;
+        if (tag === 'INPUT' || tag === 'SELECT')
+            return;
+        if (e.key === 'd' && !e.ctrlKey && !e.metaKey) {
+            e.preventDefault();
+            downloadCurrentExr();
+        }
+    });
+}
+// Rebuild the dropdown options for the current scene's variants. Keeps the prior
+// pick if it still applies, else falls back to SDR.
+function repopulateCompareSrc() {
+    const sel = document.querySelector('#compare-src');
+    if (!sel)
+        return;
+    const base = currentClip.id.split('__')[0];
+    const variants = CLIPS.filter(c => (c.id === base || c.id.startsWith(base + '__')) && c.id !== currentClip.id);
+    // Show just the encoding tail (after the em-dash) so the dropdown reads "vs LogC4 (v3)".
+    sel.innerHTML = '<option value="__sdr">vs SDR</option>'
+        + variants.map(c => `<option value="${c.id}">vs ${shortEncLabel(c.label)}</option>`).join('');
+    // Persist the comparison by ENCODING across footage switches: if we were comparing
+    // vs <enc>, keep comparing vs the new scene's <enc> (falls back to SDR if that scene
+    // lacks it, or if it would compare the clip against itself).
+    let target = '__sdr';
+    if (compareEnc) {
+        const want = `${base}__${compareEnc}`;
+        if (want !== currentClip.id && variants.some(c => c.id === want))
+            target = want;
+    }
+    sel.value = target;
+    compareBClip = target === '__sdr' ? null : target;
+    updateWipeLabels();
+}
 function wireCompare() {
     const btn = $('#btn-compare');
     const wipeLine = $('#wipe-line');
@@ -656,11 +1079,16 @@ function wireCompare() {
         wipeLine.classList.toggle('active', compareOn);
         lblL.classList.toggle('active', compareOn);
         lblR.classList.toggle('active', compareOn);
-        if (compareOn)
-            loadSDR(currentClip.id, currentFrame);
+        if (compareOn) {
+            updateWipeLabels();
+            refreshCompareB(currentClip.id, currentFrame);
+        }
+        else
+            renderer.compareHDR = false;
         renderAndHist();
         updateWipeUI();
     }
+    setupCompareSrc();
     btn.addEventListener('click', toggleCompare);
     window.addEventListener('keydown', (e) => {
         if (e.key === 'c' && !e.ctrlKey && document.activeElement?.tagName !== 'INPUT')

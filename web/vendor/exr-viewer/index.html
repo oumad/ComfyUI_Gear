@@ -4,8 +4,8 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>HDR EXR Viewer</title>
-  <script type="module" crossorigin src="./assets/index-oYbb7hT6.js"></script>
-  <link rel="stylesheet" crossorigin href="./assets/index-iigXSoGH.css">
+  <script type="module" crossorigin src="./assets/index-xQhLZH7e.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-Mp3j3Qc2.css">
 </head>
 <body>
 
@@ -25,8 +25,8 @@
   <div class="tb-sep"></div>
 
   <label class="tb-label">EV</label>
-  <input type="range" id="sl-exposure" class="tb-slider" min="-6" max="6" step="0.05" value="0"/>
-  <input type="number" class="tb-num" id="tb-ev" value="0.00" step="0.05" min="-6" max="6"/>
+  <input type="range" id="sl-exposure" class="tb-slider" min="-7" max="7" step="0.05" value="0"/>
+  <input type="number" class="tb-num" id="tb-ev" value="0.00" step="0.05" min="-7" max="7"/>
   <button class="tb-reset-dot" id="ev-reset" title="Reset EV">&#x21ba;</button>
 
   <div class="tb-sep" style="margin:0 4px"></div>
@@ -49,7 +49,10 @@
 
   <button class="tb-btn" id="btn-compare" title="Compare HDR / SDR (C)">A|B</button>
 
+  <button class="tb-btn tb-btn-label" id="btn-download" title="Download current EXR (D)">EXR&#8595;</button>
+
   <span class="tb-info" id="info-res"></span>
+  <span class="tb-info" id="info-depth"></span>
   <span class="tb-info" id="info-decode"></span>
 
   <button class="tb-btn" id="btn-panel" title="Toggle panel (Tab)">&#9776;</button>
