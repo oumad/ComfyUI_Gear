@@ -6,6 +6,8 @@ Currently ships:
 - **Gear · LogC3 Decode + Save EXR** — inverse-LogC3 a `[0,1]` LoRA output to scene-linear HDR and write a float16 EXR. Ceiling ~55 linear (≈8.3 stops above mid-gray).
 - **Gear · LogC4 Decode + Save EXR** — same idea with ARRI LogC4. Ceiling ~470 linear (≈11.3 stops above mid-gray) — ~3 extra stops of highlight headroom for HDR LoRAs trained on LogC4 targets (e.g. the V10 / `*_logc4_*` family).
 - **Gear · ACEScct Decode + Save EXR** — same idea with ACEScct (AMPAS S-2016-001). Ceiling ~222.86 linear (≈10.3 stops above mid-gray) with a bounded shadow toe, so more of `[0,1]` goes to shadows/midtones than LogC4. For HDR LoRAs trained on ACEScct targets (the ACEScct Prodigy r128 family). Output is 16-bit half-float EXR, ~14-bit effective (VAE-decoded).
+- **Gear · Load EXR (linear)** — read a linear HDR EXR (single file or glob for sequences) into an IMAGE batch, values unclamped (>1.0 preserved).
+- **Gear · ACEScct Encode** — the forward curve: linear HDR → ACEScct `[0,1]`, with input-space handling (`linear_acescg` pass-through, `linear_rec709` → AP1 matrix, `srgb_display` → EOTF + matrix) and a pre-encode EV shift. Pair with Load EXR to feed HDR content into ACEScct pipelines (HDR-to-HDR conditioning).
 - **Gear · Color Grade (exr-viewer)** — full ACEScct grading panel (color wheels, lift/gamma/gain/offset, scopes, A|B compare, batch scrubber, AgX / ACES Fitted / Hable / Reinhard tone mappers, .cube LUTs) embedded as a modal pop-up powered by [exr-viewer](https://github.com/oumad/exr-viewer).
 
 More nodes will be added over time. The pack is structured so adding one is editing one file (see *Layout* below).
@@ -75,11 +77,14 @@ ComfyUI_Gear/
 │   ├── logc3_decode.py
 │   ├── logc4_decode.py
 │   ├── acescct_decode.py
+│   ├── acescct_encode.py
+│   ├── load_exr.py
 │   └── color_grade.py
 ├── gear/                        # pure-Python library (no ComfyUI deps)
 │   ├── logc3.py                 # ARRI LogC3 encode/decode (EI 800)
 │   ├── logc4.py                 # ARRI LogC4 encode/decode
 │   ├── acescct.py               # ACEScct (AMPAS S-2016-001) encode/decode
+│   ├── aces_mats.py             # Rec.709<->AP1 matrices + sRGB EOTF (no OCIO)
 │   ├── grading.py               # torch port of renderer.ts
 │   └── exr_io.py                # float16 EXR writer
 ├── web/                         # ComfyUI frontend extension
