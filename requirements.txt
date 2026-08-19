@@ -1,3 +1,4 @@
 opencv-python>=4.8
 numpy
 Pillow
+OpenEXR>=3.2

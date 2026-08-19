@@ -10,10 +10,7 @@ import os
 import numpy as np
 import torch
 
-# OpenCV EXR support must be enabled before cv2 import anywhere in the process;
-# ComfyUI may have imported cv2 already, so set it defensively at module load.
-os.environ.setdefault("OPENCV_IO_ENABLE_OPENEXR", "1")
-import cv2
+from ..gear import exr_io
 
 
 class GearLoadEXR:
@@ -52,14 +49,9 @@ class GearLoadEXR:
 
         frames = []
         for f in files:
-            bgr = cv2.imread(f, cv2.IMREAD_UNCHANGED)
-            if bgr is None:
-                raise IOError(f"failed to read EXR: {f}")
-            if bgr.ndim == 2:
-                bgr = np.stack([bgr] * 3, axis=-1)
-            rgb = bgr[:, :, :3][:, :, ::-1].astype(np.float32)
+            rgb = exr_io.read_exr(f)
             rgb = np.nan_to_num(rgb, nan=0.0, posinf=1e6, neginf=0.0)
-            frames.append(torch.from_numpy(rgb.copy()))
+            frames.append(torch.from_numpy(np.ascontiguousarray(rgb)))
         batch = torch.stack(frames, dim=0)
         print(f"[Gear/HDR] loaded {len(files)} EXR frame(s) {tuple(batch.shape)} "
               f"range [{batch.min():.4f}, {batch.max():.2f}]")
